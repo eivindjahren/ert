@@ -29,7 +29,7 @@ def add_step_inputs(
         if input_.dest_is_directory:
             transformation = ert.data.TarRecordTransformation
         elif input_.dest_smry_keys:
-            transformation = ert.data.EclSumTransformation
+            transformation = ert.data.EclSumTransformation(input_.dest_smry_keys)
         step_input = (
             create_file_io_builder()
             .set_name(input_.name)
@@ -107,15 +107,17 @@ def add_step_outputs(
     step: StepBuilder,
 ) -> None:
     for record_name, output in step_config.output.items():
+        transformation = ert.data.FileRecordTransformation
+        if output.dest_is_directory:
+            transformation = ert.data.TarRecordTransformation
+        elif output.dest_smry_keys:
+            transformation = ert.data.EclSumTransformation(output.dest_smry_keys)
         output = (
             create_file_io_builder()
             .set_name(record_name)
             .set_path(pathlib.Path(output.location))
             .set_mime(output.mime)
-            .set_transformation(
-                ert.data.TarRecordTransformation()
-                if output.is_directory
-                else ert.data.FileRecordTransformation()
+            .set_transformation(transformation)
             )
         )
         for iens in range(0, ensemble_size):
