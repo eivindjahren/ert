@@ -163,7 +163,14 @@ class EclSumTransformation(RecordTransformation):
     ) -> None:
         if isinstance(record, NumericalRecordTree):
             # todo: write the data in each subrecord instead of the uris..
-            get_serializer(mime).encode_to_path(record.data, runpath / location)
+
+            await get_serializer(mime).encode_to_path(
+                {
+                    smry_key: record.data
+                    for smry_key, record in record._flat_record_dict.items()
+                },
+                runpath / location,
+            )
         else:
             raise TypeError("Only NumericalRecordTrees can be transformed.")
         pass

@@ -21,10 +21,11 @@ from .record._transmitter import (
 )
 
 from .record._transformation import (
-    FileRecordTransformation,
-    TarRecordTransformation,
+    EclSumTransformation,
     ExecutableRecordTransformation,
+    FileRecordTransformation,
     RecordTransformation,
+    TarRecordTransformation,
 )
 
 __all__ = (
