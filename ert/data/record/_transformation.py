@@ -4,10 +4,12 @@ import tarfile
 from abc import ABC, abstractmethod
 from concurrent import futures
 from pathlib import Path
-from typing import Tuple
+from typing import Dict, List, Optional, Tuple
 
 import aiofiles
-from ert.data import BlobRecord, NumericalRecord, Record
+from ecl.summary import EclSum
+
+from ert.data import BlobRecord, NumericalRecord, NumericalRecordTree, Record
 from ert.serialization import get_serializer
 from ert_shared.async_utils import get_event_loop
 
@@ -132,3 +134,53 @@ async def _save_record_to_file(record: Record, location: Path, mime: str) -> Non
     else:
         async with aiofiles.open(str(location), mode="wb") as fb:
             await fb.write(record.data)  # type: ignore
+
+
+class EclSumTransformation(RecordTransformation):
+    """A transformation that will transform binary output from Eclipse into a
+    NumericalRecordTree.
+
+    Input, as NumericalRecordTree, can be transformed into a serializable
+    format"""
+
+    def __init__(self, smry_keys: Optional[List[str]], sub_path: Optional[str] = None):
+        """
+        Args:
+            keys: List of Eclipse summary vectors to include when transforming from
+                Eclipse binary files. Wildcards are not supported."
+            sub_path: A path to an internal or leaf node in the NumericalRecordTree
+                used to select subsets when transforming to a serializable format.
+        """
+        self._smry_keys = smry_keys
+        self._sub_path = sub_path
+
+    async def transform_input(
+        self,
+        record: Record,
+        mime: str,
+        runpath: Path,
+        location: Path,
+    ) -> None:
+        if isinstance(record, NumericalRecordTree):
+            # todo: write the data in each subrecord instead of the uris..
+            get_serializer(mime).encode_to_path(record.data, runpath / location)
+        else:
+            raise TypeError("Only NumericalRecordTrees can be transformed.")
+        pass
+
+    async def transform_output(
+        self,
+        mime: str,
+        location: Path,
+    ) -> Record:
+        eclsum = EclSum(str(location))
+        records = {}
+        if self._smry_keys is None:
+            raise ValueError("No summary keys provided")
+        for key in self._smry_keys:
+            records[key] = NumericalRecord(
+                data=dict(
+                    zip(map(str, eclsum.dates), map(float, eclsum.numpy_vector(key)))
+                )
+            )
+        return NumericalRecordTree(record_dict=records)
