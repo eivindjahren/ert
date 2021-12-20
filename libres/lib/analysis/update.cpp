@@ -1,4 +1,8 @@
+#include <chrono>
+#include <utility>
+
 #include "ert/analysis/update.hpp"
+#include <ert/python.hpp>
 #include <ert/util/type_vector_functions.h>
 #include <ert/res_util/thread_pool.hpp>
 #include <ert/res_util/matrix.hpp>
@@ -32,6 +36,8 @@ namespace analysis {
    lifetime of the serialization_info, the other members will be constant. 
 */
 
+auto logger = ert::get_logger("analysis")
+
 typedef struct {
     int row_offset;
     const active_list_type *active_list;
@@ -56,6 +62,15 @@ typedef struct {
     serialize_node_info_type
         *node_info; /* mutable: For the serialization of one node */
 } serialize_info_type;
+
+template<typename F, typename... Args>
+void log_function_time(F func, Args&&... args){
+    std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
+    func(std::forward<Args>(args)...);
+    logger->info("execution time: {}", std::chrono::duration_cast<std::chrono::nanosecond>(
+        std::chrono::high_resolution_clock::now() - start
+    ).count());
+}
 
 /*
  This is very awkward; the problem is that for the GEN_DATA type the config
@@ -765,8 +780,8 @@ bool smoother_update(std::vector<int> step_list,
             auto parameters =
                 load_parameters(target_fs, ensemble_config, iens_active_index,
                                 current_step, meas_data, obs_data, ministep);
-            run_analysis_update(module, ens_mask, meas_data, obs_data,
-                                shared_rng, E, parameters);
+            log_function_time(run_analysis_update, module, ens_mask, 
+                              meas_data, obs_data, shared_rng, E, parameters);
             save_parameters(target_fs, ensemble_config, iens_active_index,
                             current_step, ministep, parameters);
             for (auto &[_, A] : parameters)
@@ -776,9 +791,9 @@ bool smoother_update(std::vector<int> step_list,
             auto row_scaling_parameters = load_row_scaling_parameters(
                 target_fs, ensemble_config, iens_active_index, current_step,
                 meas_data, ministep);
-            run_analysis_update_with_rowscaling(module, ens_mask, meas_data,
-                                                obs_data, shared_rng, E,
-                                                row_scaling_parameters);
+            log_function_time(run_analysis_update_with_rowscaling, module,
+                              ens_mask, meas_data, obs_data, shared_rng, E,
+                              row_scaling_parameters);
 
             save_row_scaling_parameters(target_fs, ensemble_config,
                                         iens_active_index, ministep,
