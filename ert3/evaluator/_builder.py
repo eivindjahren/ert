@@ -119,7 +119,6 @@ def add_step_outputs(
             .set_mime(output.mime)
             .set_transformation(transformation)
             )
-        )
         for iens in range(0, ensemble_size):
             factory: Callable[
                 [Type[ert.data.RecordTransmitter]], ert.data.RecordTransmitter

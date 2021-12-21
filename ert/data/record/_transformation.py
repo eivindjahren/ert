@@ -140,8 +140,8 @@ class EclSumTransformation(RecordTransformation):
     """A transformation that will transform binary output from Eclipse into a
     NumericalRecordTree.
 
-    Input, as NumericalRecordTree, can be transformed into a serializable
-    format"""
+    Input, as a NumericalRecordTree, can be transformed into multiple files
+    of a serializable format."""
 
     def __init__(self, smry_keys: Optional[List[str]], sub_path: Optional[str] = None):
         """
@@ -162,15 +162,12 @@ class EclSumTransformation(RecordTransformation):
         location: Path,
     ) -> None:
         if isinstance(record, NumericalRecordTree):
-            # todo: write the data in each subrecord instead of the uris..
-
-            await get_serializer(mime).encode_to_path(
-                {
-                    smry_key: record.data
-                    for smry_key, record in record._flat_record_dict.items()
-                },
-                runpath / location,
-            )
+            for smry_key, record in record._flat_record_dict.items():
+                location_key = f"{smry_key}-{location}"
+                print(f"Encoding {mime} to {location_key}")
+                await get_serializer(mime).encode_to_path(
+                    record.data, path=runpath / location_key
+                )
         else:
             raise TypeError("Only NumericalRecordTrees can be transformed.")
         pass
@@ -180,14 +177,23 @@ class EclSumTransformation(RecordTransformation):
         mime: str,
         location: Path,
     ) -> Record:
-        eclsum = EclSum(str(location))
-        records = {}
         if self._smry_keys is None:
             raise ValueError("No summary keys provided")
-        for key in self._smry_keys:
-            records[key] = NumericalRecord(
-                data=dict(
-                    zip(map(str, eclsum.dates), map(float, eclsum.numpy_vector(key)))
-                )
-            )
-        return NumericalRecordTree(record_dict=records)
+
+        executor = futures.ThreadPoolExecutor()
+        record_dict = await get_event_loop().run_in_executor(
+            executor, _sync_eclsum_transform_output, location, self._smry_keys
+        )
+        return NumericalRecordTree(record_dict=record_dict)
+
+
+def _sync_eclsum_transform_output(
+    location: Path, smry_keys: List[str]
+) -> Dict[str, NumericalRecord]:
+    eclsum = EclSum(str(location))
+    record_dict = {}
+    for key in smry_keys:
+        record_dict[key] = NumericalRecord(
+            data=dict(zip(map(str, eclsum.dates), map(float, eclsum.numpy_vector(key))))
+        )
+    return record_dict

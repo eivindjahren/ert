@@ -17,7 +17,6 @@
       record: eclsum
       location: case/SPE1
       keys: [WOPT:PROD, WWPT:PROD, WGPT:PROD, WWIT:INJ]
-      # check where these ends up, in sqlite??
 
   transportable_commands:
     -

@@ -332,40 +332,20 @@ async def load_collection_from_file(
     mime: str,
     length: int = 1,
     is_directory: bool = False,
-    smry_keys: Optional[List[str]] = None
+    smry_keys: Optional[List[str]] = None,
 ) -> RecordCollection:
     if mime == "application/octet-stream":
         if smry_keys:
-            return RecordCollection(
-                records=(
-                    await ert.data.EclSumTransformation(smry_keys).transform_output(
-                        mime, file_path
-                    ),
-                ),
-                length=length,
-                collection_type=RecordCollectionType.UNIFORM,
-            )
+            transformation = ert.data.EclSumTransformation(smry_keys)
         elif is_directory:
-            return RecordCollection(
-                records=(
-                    await ert.data.TarRecordTransformation().transform_output(
-                        mime, file_path
-                    ),
-                ),
-                length=length,
-                collection_type=RecordCollectionType.UNIFORM,
-            )
+            transformation = ert.data.TarRecordTransformation()
         else:
-            return RecordCollection(
-                records=(
-                    await ert.data.FileRecordTransformation().transform_output(
-                        mime, file_path
-                    ),
-                ),
-                length=length,
-                collection_type=RecordCollectionType.UNIFORM,
-            )
-
+            transformation = ert.data.FileRecordTransformation()
+        return RecordCollection(
+            records=(await transformation.transform_output(mime, file_path),),
+            length=length,
+            collection_type=RecordCollectionType.UNIFORM,
+        )
     return RecordCollection(
         records=await ert.data.FileRecordTransformation().transform_output_sequence(
             mime, file_path
