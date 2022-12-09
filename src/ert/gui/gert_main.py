@@ -5,12 +5,12 @@ import sys
 from pathlib import Path
 
 import filelock
+from PyQt5.QtQml import QQmlApplicationEngine
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QTextEdit, QPushButton
 from qtpy.QtCore import QLocale, Qt
 from qtpy.QtWidgets import QApplication, QMessageBox
 
 from ert._c_wrappers.enkf import EnKFMain, ResConfig
-from ert._c_wrappers.enkf._deprecation_migration_suggester import DeprecationMigrationSuggester
 from ert.cli.main import ErtTimeoutError
 from ert.gui.ertnotifier import ErtNotifier
 from ert.gui.ertwidgets import SummaryPanel, resourceIcon
@@ -30,24 +30,30 @@ from ert.gui.tools.run_analysis import RunAnalysisTool
 from ert.gui.tools.workflows import WorkflowsTool
 from ert.libres_facade import LibresFacade
 from ert.services import Storage
-
+from pkg_resources import resource_filename
 
 def display_suggester(app, suggestions, fatal=False):
-    if len(suggestions) > 0:
-        suggest = QWidget()
-        layout = QVBoxLayout()
-        heading = QLabel("Some problems detected")
-        lines = QTextEdit("\n".join(suggestions))
-        copy = QPushButton("Copy messages")
-        layout.addWidget(heading)
-        layout.addWidget(lines)
-        layout.addWidget(copy)
-        suggest.setLayout(layout)
-        suggest.resize(800, 600)
-        suggest.show()
-        app.exec_()
-        if fatal:
-            sys.exit(1)
+    engine = QQmlApplicationEngine()
+    engine.quit.connect(app.quit)
+    engine.load(resource_filename("ert.gui", "resources/gui/img/application/suggester.qml"))
+    engine.rootObjects()[0].setProperty("messages", "\n".join(suggestions))
+    engine.rootObjects()[0].setProperty("fatal", fatal)
+    app.exec_()
+    # if len(suggestions) > 0:
+    #     suggest = QWidget()
+    #     layout = QVBoxLayout()
+    #     heading = QLabel("Some problems detected")
+    #     lines = QTextEdit("\n".join(suggestions))
+    #     copy = QPushButton("Copy messages")
+    #     layout.addWidget(heading)
+    #     layout.addWidget(lines)
+    #     layout.addWidget(copy)
+    #     suggest.setLayout(layout)
+    #     suggest.resize(800, 600)
+    #     suggest.show()
+    #     app.exec_()
+    #     if fatal:
+    #         sys.exit(1)
 
 
 def run_gui(args: argparse.Namespace):
