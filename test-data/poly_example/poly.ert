@@ -8,6 +8,8 @@ RUNPATH poly_out/realization-%d/iter-%d
 OBS_CONFIG observations
 TIME_MAP time_map
 
+UMASK 10
+
 NUM_REALIZATIONS 100
 MIN_REALIZATIONS 1
 

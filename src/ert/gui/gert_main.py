@@ -5,10 +5,12 @@ import sys
 from pathlib import Path
 
 import filelock
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QTextEdit, QPushButton
 from qtpy.QtCore import QLocale, Qt
 from qtpy.QtWidgets import QApplication, QMessageBox
 
 from ert._c_wrappers.enkf import EnKFMain, ResConfig
+from ert._c_wrappers.enkf._deprecation_migration_suggester import DeprecationMigrationSuggester
 from ert.cli.main import ErtTimeoutError
 from ert.gui.ertnotifier import ErtNotifier
 from ert.gui.ertwidgets import SummaryPanel, resourceIcon
@@ -30,9 +32,33 @@ from ert.libres_facade import LibresFacade
 from ert.services import Storage
 
 
+def display_suggester(app, suggestions, fatal=False):
+    if len(suggestions) > 0:
+        suggest = QWidget()
+        layout = QVBoxLayout()
+        heading = QLabel("Some problems detected")
+        lines = QTextEdit("\n".join(suggestions))
+        copy = QPushButton("Copy messages")
+        layout.addWidget(heading)
+        layout.addWidget(lines)
+        layout.addWidget(copy)
+        suggest.setLayout(layout)
+        suggest.resize(800, 600)
+        suggest.show()
+        app.exec_()
+        if fatal:
+            sys.exit(1)
+
+
 def run_gui(args: argparse.Namespace):
     app = QApplication([])  # Early so that QT is initialized before other imports
     app.setWindowIcon(resourceIcon("application/window_icon_cutout"))
+
+    try:
+        display_suggester(app, ResConfig.make_suggestion_list(args.config))
+    except Exception as e:
+        display_suggester(app, [f"Hit fatal error while parsing config: {e}"], fatal=True)
+
     res_config = ResConfig(args.config)
 
     # Create logger inside function to make sure all handlers have been added to
