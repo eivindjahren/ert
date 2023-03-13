@@ -6,7 +6,9 @@ import shutil
 import threading
 from argparse import ArgumentParser
 from unittest.mock import Mock, call
+from textwrap import dedent
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -277,58 +279,84 @@ def test_ies(tmpdir, source_root):
 
 @pytest.mark.integration_test
 def test_that_running_ies_with_different_steplength_produces_different_result(
-    tmpdir, source_root, snapshot
+    tmpdir, source_root
 ):
+    """This is a regression test to make sure that different step-lengths
+    give different results when running SIES.
+    """
     shutil.copytree(
         os.path.join(source_root, "test-data", "poly_example"),
         os.path.join(str(tmpdir), "poly_example"),
     )
 
-    with tmpdir.as_cwd():
-        with open("poly_example/poly.ert", mode="a", encoding="utf-8") as fh:
-            fh.write(
-                """
-ANALYSIS_SELECT IES_ENKF
-ANALYSIS_SET_VAR IES_ENKF IES_MAX_STEPLENGTH 0.5
-ANALYSIS_SET_VAR IES_ENKF IES_MIN_STEPLENGTH 0.2
-ANALYSIS_SET_VAR IES_ENKF IES_DEC_STEPLENGTH 2.5
-"""
-            )
-
+    def _run(target):
         parser = ArgumentParser(prog="test_main")
         parsed = ert_parser(
             parser,
             [
                 ITERATIVE_ENSEMBLE_SMOOTHER_MODE,
                 "--target-case",
-                "iter-%d",
+                f"{target}-%d",
                 "--realizations",
-                "1,2,4,8,16",
+                "1,2,4,8",
                 "poly_example/poly.ert",
-                "--port-range",
-                "1024-65535",
+                "--num-iterations",
+                "1",
             ],
         )
         run_cli(parsed)
         facade = LibresFacade.from_config_file("poly.ert")
 
         with open_storage(facade.enspath) as storage:
-            iter_0_fs = storage.get_ensemble_by_name("iter-0")
+            iter_0_fs = storage.get_ensemble_by_name(f"{target}-0")
             df_iter_0 = facade.load_all_gen_kw_data(iter_0_fs)
-            iter_1_fs = storage.get_ensemble_by_name("iter-1")
+            iter_1_fs = storage.get_ensemble_by_name(f"{target}-1")
             df_iter_1 = facade.load_all_gen_kw_data(iter_1_fs)
-            iter_2_fs = storage.get_ensemble_by_name("iter-2")
-            df_iter_2 = facade.load_all_gen_kw_data(iter_2_fs)
-            iter_3_fs = storage.get_ensemble_by_name("iter-3")
-            df_iter_3 = facade.load_all_gen_kw_data(iter_3_fs)
 
             result = pd.concat(
-                [df_iter_0, df_iter_1, df_iter_2, df_iter_3],
-                keys=["iter-0", "iter-1", "iter-2", "iter-3"],
+                [df_iter_0, df_iter_1],
+                keys=["iter-0", "iter-1"],
             )
-            snapshot.assert_match(
-                result.to_csv(float_format="%.12g"), "ies_steplength_snapshot"
+            return result
+
+    # Run SIES with step-lengths defined
+    with tmpdir.as_cwd():
+        with open("poly_example/poly.ert", mode="a", encoding="utf-8") as fh:
+            fh.write(
+                dedent(
+                    """
+                RANDOM_SEED 123456
+                ANALYSIS_SELECT IES_ENKF
+                ANALYSIS_SET_VAR IES_ENKF IES_MAX_STEPLENGTH 0.5
+                ANALYSIS_SET_VAR IES_ENKF IES_MIN_STEPLENGTH 0.2
+                ANALYSIS_SET_VAR IES_ENKF IES_DEC_STEPLENGTH 2.5
+                """
+                )
             )
+
+        result_1 = _run("target_result_1")
+
+    # Run SIES with different step-lengths defined
+    with tmpdir.as_cwd():
+        with open("poly_example/poly.ert", mode="a", encoding="utf-8") as fh:
+            fh.write(
+                dedent(
+                    """
+                ANALYSIS_SELECT IES_ENKF
+                ANALYSIS_SET_VAR IES_ENKF IES_MAX_STEPLENGTH 0.6
+                ANALYSIS_SET_VAR IES_ENKF IES_MIN_STEPLENGTH 0.3
+                ANALYSIS_SET_VAR IES_ENKF IES_DEC_STEPLENGTH 2.0
+                """
+                )
+            )
+
+        result_2 = _run("target_result_2")
+
+        # Prior should be the same
+        assert result_1.loc["iter-0"].equals(result_2.loc["iter-0"])
+
+        # Posterior should be different
+        assert not np.isclose(result_1.loc["iter-1"], result_2.loc["iter-1"]).all()
 
 
 @pytest.mark.integration_test
