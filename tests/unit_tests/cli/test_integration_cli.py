@@ -288,13 +288,10 @@ def test_that_running_ies_with_different_steplength_produces_different_result(
         with open("poly_example/poly.ert", mode="a", encoding="utf-8") as fh:
             fh.write(
                 """
-ANALYSIS_SET_VAR IES_ENKF ENKF_SUBSPACE_DIMENSION -1
-ANALYSIS_SET_VAR IES_ENKF ENKF_TRUNCATION 0.999
+ANALYSIS_SELECT IES_ENKF
 ANALYSIS_SET_VAR IES_ENKF IES_MAX_STEPLENGTH 0.5
 ANALYSIS_SET_VAR IES_ENKF IES_MIN_STEPLENGTH 0.2
 ANALYSIS_SET_VAR IES_ENKF IES_DEC_STEPLENGTH 2.5
-ANALYSIS_SET_VAR IES_ENKF IES_INVERSION 0
-ANALYSIS_SELECT IES_ENKF
 """
             )
 
@@ -312,22 +309,26 @@ ANALYSIS_SELECT IES_ENKF
                 "1024-65535",
             ],
         )
-        FeatureToggling.update_from_args(parsed)
-
         run_cli(parsed)
-        FeatureToggling.reset()
         facade = LibresFacade.from_config_file("poly.ert")
-        iter_0 = facade.load_all_gen_kw_data("iter-0")
-        iter_1 = facade.load_all_gen_kw_data("iter-1")
-        iter_2 = facade.load_all_gen_kw_data("iter-2")
-        iter_3 = facade.load_all_gen_kw_data("iter-3")
-        result = pd.concat(
-            [iter_0, iter_1, iter_2, iter_3],
-            keys=["iter-0", "iter-1", "iter-2", "iter-3"],
-        )
-        snapshot.assert_match(
-            result.to_csv(float_format="%.12g"), "ies_steplength_snapshot"
-        )
+
+        with open_storage(facade.enspath) as storage:
+            iter_0_fs = storage.get_ensemble_by_name("iter-0")
+            df_iter_0 = facade.load_all_gen_kw_data(iter_0_fs)
+            iter_1_fs = storage.get_ensemble_by_name("iter-1")
+            df_iter_1 = facade.load_all_gen_kw_data(iter_1_fs)
+            iter_2_fs = storage.get_ensemble_by_name("iter-2")
+            df_iter_2 = facade.load_all_gen_kw_data(iter_2_fs)
+            iter_3_fs = storage.get_ensemble_by_name("iter-3")
+            df_iter_3 = facade.load_all_gen_kw_data(iter_3_fs)
+
+            result = pd.concat(
+                [df_iter_0, df_iter_1, df_iter_2, df_iter_3],
+                keys=["iter-0", "iter-1", "iter-2", "iter-3"],
+            )
+            snapshot.assert_match(
+                result.to_csv(float_format="%.12g"), "ies_steplength_snapshot"
+            )
 
 
 @pytest.mark.integration_test
