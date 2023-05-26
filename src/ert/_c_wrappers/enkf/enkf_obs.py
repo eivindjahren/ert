@@ -1,8 +1,9 @@
 import os
 import warnings
+from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime, timedelta
-from fnmatch import fnmatch
-from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 from ecl.summary import EclSumVarType
@@ -11,7 +12,6 @@ from ecl.util.util import CTime, IntVector
 from ert import _clib
 from ert._c_wrappers.enkf.config.gen_data_config import GenDataConfig
 from ert._c_wrappers.enkf.enums import EnkfObservationImplementationType
-from ert._c_wrappers.enkf.observations import ObsVector
 from ert._c_wrappers.enkf.observations.gen_observation import GenObservation
 from ert._c_wrappers.enkf.observations.summary_observation import SummaryObservation
 from ert._c_wrappers.sched import HistorySourceEnum
@@ -39,57 +39,13 @@ class ObservationConfigError(ConfigValidationError):
         )
 
 
+Observation = Union[SummaryObservation, GenObservation]
+
+
+@dataclass
 class EnkfObs:
-    def __init__(self, obs_vectors: Dict[str, ObsVector], obs_time: List[datetime]):
-        self.obs_vectors = obs_vectors
-        self.obs_time = obs_time
-
-    def __len__(self) -> int:
-        return len(self.obs_vectors)
-
-    def __contains__(self, key: str) -> bool:
-        return key in self.obs_vectors
-
-    def __iter__(self) -> Iterator[ObsVector]:
-        return iter(self.obs_vectors.values())
-
-    def __getitem__(self, key: str) -> ObsVector:
-        return self.obs_vectors[key]
-
-    def getTypedKeylist(
-        self, observation_implementation_type: EnkfObservationImplementationType
-    ) -> List[str]:
-        return [
-            key
-            for key, obs in self.obs_vectors.items()
-            if observation_implementation_type == obs.getImplementationType()
-        ]
-
-    def obsType(self, key: str) -> EnkfObservationImplementationType:
-        self.obs_vectors[key].getImplementationType()
-
-    def getMatchingKeys(
-        self, pattern: str, obs_type: Optional[EnkfObservationImplementationType] = None
-    ) -> List[str]:
-        """
-        Will return a list of all the observation keys matching the input
-        pattern. The matching is based on fnmatch().
-        """
-        key_list = sorted(
-            key
-            for key in self.obs_vectors
-            if any(fnmatch(key, p) for p in pattern.split())
-        )
-        if obs_type:
-            return [key for key in key_list if self.obsType(key) == obs_type]
-        else:
-            return key_list
-
-    def hasKey(self, key: str) -> bool:
-        return key in self
-
-    def getObservationTime(self, index: int) -> datetime:
-        return self.obs_time[index]
+    obs_vectors: Dict[str, Dict[int, Observation]]
+    obs_time: List[datetime]
 
     @staticmethod
     def _handle_error_mode(
@@ -115,8 +71,8 @@ class EnkfObs:
         std_cutoff: float,
         history_type: Optional[HistorySourceEnum],
         time_len: int,
-    ) -> Dict[str, ObsVector]:
-        obs_vectors = {}
+    ) -> Dict[str, Dict[int, Observation]]:
+        obs_vectors = defaultdict(dict)
         sub_instances = conf_instance.get_sub_instances("HISTORY_OBSERVATION")
 
         if sub_instances == []:
@@ -131,12 +87,6 @@ class EnkfObs:
         for instance in sub_instances:
             summary_key = instance.name
             ensemble_config.add_summary_full(summary_key, refcase)
-            obs_vector = ObsVector(
-                EnkfObservationImplementationType.SUMMARY_OBS,
-                summary_key,
-                ensemble_config.getNode(summary_key).getKey(),
-                time_len,
-            )
             error = float(instance.get_value("ERROR"))
             error_min = float(instance.get_value("ERROR_MIN"))
             error_mode = instance.get_value("ERROR_MODE")
@@ -204,12 +154,9 @@ class EnkfObs:
                                 category=ConfigWarning,
                             )
                             continue
-                        obs_vector.add_summary_obs(
-                            SummaryObservation(summary_key, summary_key, value, error),
-                            i,
-                        )
-
-                obs_vectors[obs_vector.getKey()] = obs_vector
+                    obs_vectors[obs_key][i] = SummaryObservation(
+                        summary_key, summary_key, value, error
+                    )
         return obs_vectors
 
     @staticmethod
@@ -290,19 +237,13 @@ class EnkfObs:
     @classmethod
     def _handle_summary_observation(
         cls, ensemble_config: "EnsembleConfig", conf_instance, time_map
-    ) -> Dict[str, ObsVector]:
-        obs_vectors = {}
+    ) -> Dict[str, Dict[int, Observation]]:
+        obs_vectors = defaultdict(dict)
         for instance in conf_instance.get_sub_instances("SUMMARY_OBSERVATION"):
             summary_key = instance.get_value("KEY")
             obs_key = instance.name
             refcase = ensemble_config.refcase
             ensemble_config.add_summary_full(summary_key, refcase)
-            obs_vector = ObsVector(
-                EnkfObservationImplementationType.SUMMARY_OBS,  # type: ignore
-                obs_key,
-                ensemble_config.getNode(summary_key).getKey(),
-                len(time_map),
-            )
             value, std_dev = cls._make_value_and_std_dev(instance)
             try:
                 restart = cls._get_restart(instance, time_map)
@@ -318,10 +259,9 @@ class EnkfObs:
                     f"Problem with observation {obs_key} at "
                     f"{cls._get_time(instance, time_map[0])}"
                 )
-            obs_vector.add_summary_obs(
-                SummaryObservation(summary_key, obs_key, value, std_dev), restart
+            obs_vectors[obs_key][restart] = SummaryObservation(
+                summary_key, obs_key, value, std_dev
             )
-            obs_vectors[obs_key] = obs_vector
         return obs_vectors
 
     @classmethod
@@ -369,8 +309,8 @@ class EnkfObs:
     @classmethod
     def _handle_general_observation(
         cls, ensemble_config: "EnsembleConfig", conf_instance, time_map
-    ) -> Dict[str, ObsVector]:
-        obs_vectors = {}
+    ) -> Dict[str, Dict[int, Observation]]:
+        obs_vectors = defaultdict(dict)
         for instance in conf_instance.get_sub_instances("GENERAL_OBSERVATION"):
             state_kw = instance.get_value("DATA")
             if not ensemble_config.hasNodeGenData(state_kw):
@@ -382,12 +322,6 @@ class EnkfObs:
                 continue
             config_node = ensemble_config.getNode(state_kw)
             obs_key = instance.name
-            obs_vector = ObsVector(
-                EnkfObservationImplementationType.GEN_OBS,  # type: ignore
-                obs_key,
-                config_node.getKey(),
-                len(time_map),
-            )
             try:
                 restart = cls._get_restart(instance, time_map)
             except ValueError as err:
@@ -412,29 +346,22 @@ class EnkfObs:
                 )
                 continue
 
-            obs_vector.add_general_obs(
-                cls._create_gen_obs(
-                    (
-                        float(instance.get_value("VALUE")),
-                        float(instance.get_value("ERROR")),
-                    )
-                    if instance.has_value("VALUE")
-                    else None,
-                    instance.get_value("OBS_FILE")
-                    if instance.has_value("OBS_FILE")
-                    else None,
-                    instance.get_value("INDEX_LIST")
-                    if instance.has_value("INDEX_LIST")
-                    else None,
-                ),
-                restart,
+            obs_vectors[obs_key][restart] = cls._create_gen_obs(
+                (
+                    float(instance.get_value("VALUE")),
+                    float(instance.get_value("ERROR")),
+                )
+                if instance.has_value("VALUE")
+                else None,
+                instance.get_value("OBS_FILE")
+                if instance.has_value("OBS_FILE")
+                else None,
+                instance.get_value("INDEX_LIST")
+                if instance.has_value("INDEX_LIST")
+                else None,
             )
 
-            obs_vectors[obs_key] = obs_vector
         return obs_vectors
-
-    def __repr__(self) -> str:
-        return f"EnkfObs({self.obs_vectors}, {self.obs_time})"
 
     @classmethod
     def from_ert_config(cls, config: "ErtConfig") -> "EnkfObs":

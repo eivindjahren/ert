@@ -5,7 +5,7 @@ from textwrap import dedent
 import pytest
 from ecl.summary import EclSum
 
-from ert._c_wrappers.enkf import EnkfObs, ErtConfig, ObsVector, SummaryConfig
+from ert._c_wrappers.enkf import EnkfObs, ErtConfig, SummaryConfig
 from ert._c_wrappers.enkf.enums import EnkfObservationImplementationType
 from ert._c_wrappers.enkf.observations.summary_observation import SummaryObservation
 from ert.parsing import ConfigWarning
@@ -117,7 +117,7 @@ def test_observations(setup_case):
         count,
     )
 
-    observations.obs_vectors[observation_key] = observation_vector
+    observations.obs_vectors[observation_key] = {}
 
     values = []
     for index in range(0, count):
@@ -126,23 +126,20 @@ def test_observations(setup_case):
         summary_observation_node = SummaryObservation(
             summary_key, observation_key, value, std
         )
-        observation_vector.add_summary_obs(summary_observation_node, index)
-        assert observation_vector.getNode(index) == summary_observation_node
+        observations.obs_vectors[observation_key][index] = summary_observation_node
         assert summary_observation_node.getValue() == value
         values.append((index, value, std))
 
-    test_vector = observations[observation_key]
+    test_vector = observations.obs_vectors[observation_key]
     index = 0
-    for node in test_vector:
+    for node in test_vector.values():
         assert isinstance(node, SummaryObservation)
         assert node.getValue() == index * 10.5
         index += 1
 
     assert observation_vector == test_vector
     for index, value, std in values:
-        assert test_vector.isActive(index)
-
-        summary_observation_node = test_vector.getNode(index)
+        summary_observation_node = test_vector[index]
 
         assert summary_observation_node.getValue() == value
         assert summary_observation_node.getStandardDeviation() == std

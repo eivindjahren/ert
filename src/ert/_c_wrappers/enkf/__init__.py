@@ -15,7 +15,7 @@ from .enums import (
 from .ert_config import ErtConfig
 from .ert_run_context import RunContext
 from .model_config import ModelConfig
-from .observations import GenObservation, ObsVector, SummaryObservation
+from .observations import GenObservation, SummaryObservation
 from .queue_config import QueueConfig
 from .row_scaling import RowScaling
 from .run_arg import RunArg
@@ -24,7 +24,6 @@ from .time_map import TimeMap
 __all__ = [
     "SummaryObservation",
     "GenObservation",
-    "ObsVector",
     "GenKwConfig",
     "GenDataConfig",
     "SummaryConfig",
