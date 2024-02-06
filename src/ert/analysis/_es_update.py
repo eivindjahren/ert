@@ -38,11 +38,7 @@ from .update import RowScalingParameter
 if TYPE_CHECKING:
     import numpy.typing as npt
 
-    from ert.analysis.configuration import (
-        Observation,
-        UpdateConfiguration,
-        UpdateStep,
-    )
+    from ert.analysis.configuration import Observation, UpdateConfiguration, UpdateStep
     from ert.storage import EnsembleAccessor, EnsembleReader
 
 _logger = logging.getLogger(__name__)
@@ -681,7 +677,6 @@ def analysis_ES(
                             alpha=1.0,  # The user is responsible for scaling observation covariance (esmda usage)
                             correlation_threshold=module.correlation_threshold,
                             cov_YY=cov_YY,
-                            verbose=False,
                         )
                     )
                 _logger.info(
