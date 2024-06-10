@@ -177,8 +177,10 @@ def _assertNumeric(data):
 def _plotCrossEnsembleStatistics(
     axes: "Axes", plot_config: "PlotConfig", data: CcsData, index: int
 ):
-    axes.set_xlabel(plot_config.xLabel())
-    axes.set_ylabel(plot_config.yLabel())
+    if (xlabel := plot_config.xLabel()) is not None:
+        axes.set_xlabel(xlabel)
+    if (ylabel := plot_config.yLabel()) is not None:
+        axes.set_ylabel(ylabel)
 
     style = plot_config.getStatisticsStyle("mean")
     if style.isVisible():

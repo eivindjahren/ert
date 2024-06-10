@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from math import ceil, floor, log10, sqrt
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import numpy
 import pandas as pd
@@ -45,20 +45,19 @@ def plotHistogram(
     if not ensemble_list:
         # ???
         dummy_ensemble_name = "default"
-        ensemble_list = [dummy_ensemble_name]
-        ensemble_to_data_map = {
-            EnsembleObject(
-                name=dummy_ensemble_name,
-                hidden=False,
-                id="id",
-                experiment_name="default",
-            ): pd.DataFrame()
-        }
+        dummy_ensemble_object = EnsembleObject(
+            name=dummy_ensemble_name,
+            hidden=False,
+            id="id",
+            experiment_name="default",
+        )
+        ensemble_list = [dummy_ensemble_object]
+        ensemble_to_data_map = {dummy_ensemble_object: pd.DataFrame()}
 
     ensemble_count = len(ensemble_list)
 
     plot_context.x_axis = plot_context.VALUE_AXIS
-    plot_context.Y_axis = plot_context.COUNT_AXIS
+    plot_context.y_axis = plot_context.COUNT_AXIS
 
     if config.xLabel() is None:
         config.setXLabel("Value")
@@ -68,26 +67,27 @@ def plotHistogram(
 
     use_log_scale = plot_context.log_scale
 
-    data = {}
+    data: dict[str, pd.Series[float]] = {}
     minimum = None
     maximum = None
-    categories = set()
+    categories: set[str] = set()
     max_element_count = 0
     categorical = False
     for ensemble, datas in ensemble_to_data_map.items():
         if datas.empty:
-            data[ensemble] = pd.Series(dtype="float64")
+            data[ensemble.name] = pd.Series(dtype="float64")
             continue
 
         data[ensemble.name] = datas[0]
 
         if data[ensemble.name].dtype == "object":
             try:
-                data[ensemble.name] = pd.to_numeric(
-                    data[ensemble.name], errors="ignore"
+                data[ensemble.name] = pd.to_numeric(  # type: ignore
+                    data[ensemble.name],
+                    errors="ignore",
                 )
             except AttributeError:
-                data[ensemble.name] = data[ensemble.name].convert_objects(
+                data[ensemble.name] = data[ensemble.name].convert_objects(  # type: ignore
                     convert_numeric=True
                 )
 
@@ -99,11 +99,10 @@ def plotHistogram(
         else:
             current_min = data[ensemble.name].min()
             current_max = data[ensemble.name].max()
-            minimum = current_min if minimum is None else min(minimum, current_min)
-            maximum = current_max if maximum is None else max(maximum, current_max)
+            minimum = current_min if minimum is None else min(minimum, current_min)  # type: ignore
+            maximum = current_max if maximum is None else max(maximum, current_max)  # type: ignore
             max_element_count = max(max_element_count, len(data[ensemble.name].index))
 
-    categories = sorted(categories)
     bin_count = int(ceil(sqrt(max_element_count)))
 
     axes = {}
@@ -124,7 +123,7 @@ def plotHistogram(
                     config,
                     data[ensemble.name],
                     ensemble.name,
-                    categories,
+                    sorted(categories),
                 )
             else:
                 _plotHistogram(
@@ -146,26 +145,28 @@ def plotHistogram(
 
     custom_limits = plot_context.plotConfig().limits
 
-    if custom_limits.count_maximum is not None:
-        max_count = custom_limits.count_maximum
+    if custom_limits.count_limits[1] is not None:
+        max_count = custom_limits.count_limits[1]
 
-    if custom_limits.count_minimum is not None:
-        min_count = custom_limits.count_minimum
+    if custom_limits.count_limits[0] is not None:
+        min_count = custom_limits.count_limits[0]
 
     for subplot in axes.values():
         subplot.set_ylim(min_count, max_count)
-        subplot.set_xlim(custom_limits.value_minimum, custom_limits.value_maximum)
+        subplot.set_xlim(*custom_limits.value_limits)
 
 
 def _plotCategoricalHistogram(
     axes: "Axes",
     plot_config: "PlotConfig",
-    data: pd.DataFrame,
+    data: pd.Series[float],
     label: str,
     categories: List[str],
-):
-    axes.set_xlabel(plot_config.xLabel())
-    axes.set_ylabel(plot_config.yLabel())
+) -> None:
+    if (xlabel := plot_config.xLabel()) is not None:
+        axes.set_xlabel(xlabel)
+    if (ylabel := plot_config.yLabel()) is not None:
+        axes.set_ylabel(ylabel)
 
     style = plot_config.histogramStyle()
 
@@ -187,31 +188,39 @@ def _plotCategoricalHistogram(
 def _plotHistogram(
     axes: "Axes",
     plot_config: "PlotConfig",
-    data: pd.DataFrame,
+    data: pd.Series[float],
     label: str,
-    bin_count,
-    use_log_scale=False,
-    minimum=None,
-    maximum=None,
-):
-    axes.set_xlabel(plot_config.xLabel())
-    axes.set_ylabel(plot_config.yLabel())
+    bin_count: int,
+    use_log_scale: float = False,
+    minimum: Optional[float] = None,
+    maximum: Optional[float] = None,
+) -> None:
+    if (xlabel := plot_config.xLabel()) is not None:
+        axes.set_xlabel(xlabel)
+    if (ylabel := plot_config.yLabel()) is not None:
+        axes.set_ylabel(ylabel)
 
     style = plot_config.histogramStyle()
 
+    bins: int | numpy.ndarray
     if minimum is not None and maximum is not None:
         if use_log_scale:
             bins = _histogramLogBins(bin_count, minimum, maximum)
         else:
             bins = numpy.linspace(minimum, maximum, bin_count)
+
+        if minimum == maximum:
+            minimum -= 0.5
+            maximum += 0.5
     else:
         bins = bin_count
 
-    axes.hist(data.values, alpha=style.alpha, bins=bins, color=style.color)
-
-    if minimum == maximum:
-        minimum -= 0.5
-        maximum += 0.5
+    axes.hist(
+        data.values,  # type: ignore
+        alpha=style.alpha,
+        bins=bins,  # type: ignore
+        color=style.color,
+    )
 
     axes.set_xlim(minimum, maximum)
 
@@ -221,7 +230,7 @@ def _plotHistogram(
     plot_config.addLegendItem(label, rectangle)
 
 
-def _histogramLogBins(bin_count: int, minimum: float, maximum: float):
+def _histogramLogBins(bin_count: int, minimum: float, maximum: float) -> numpy.ndarray:
     minimum = log10(float(minimum))
     maximum = log10(float(maximum))
 

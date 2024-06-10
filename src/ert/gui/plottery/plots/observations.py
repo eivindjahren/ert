@@ -48,9 +48,9 @@ def _plotObservations(
         style.width = 0
 
     axes.errorbar(
-        x=data.loc["key_index"].values,
-        y=data.loc["OBS"].values,
-        yerr=data.loc["STD"].values,
+        x=data.loc["key_index"].values,  # type: ignore
+        y=data.loc["OBS"].values,  # type: ignore
+        yerr=data.loc["STD"].values,  # type: ignore
         fmt=style.line_style,
         ecolor=style.color,
         color=style.color,

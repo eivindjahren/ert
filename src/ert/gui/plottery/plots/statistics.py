@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict
 
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
+    from ert.gui.tools.plot.plot_api import EnsembleObject
+
 
 class StatisticsPlot:
     def __init__(self) -> None:
@@ -26,10 +28,10 @@ class StatisticsPlot:
     def plot(
         figure: Figure,
         plot_context: PlotContext,
-        ensemble_to_data_map,
-        _observation_data,
-        std_dev_images,
-    ):
+        ensemble_to_data_map: Dict[EnsembleObject, DataFrame],
+        _observation_data: DataFrame,
+        std_dev_images: Dict[str, bytes],
+    ) -> None:
         config = plot_context.plotConfig()
         axes = figure.add_subplot(111)
 
@@ -123,7 +125,7 @@ def _plotPercentiles(
     if style.isVisible():
         axes.plot(
             data.index.values,
-            data["Mean"].values,
+            data["Mean"].values,  # type: ignore
             alpha=style.alpha,
             linestyle=style.line_style,
             color=style.color,
@@ -136,7 +138,7 @@ def _plotPercentiles(
     if style.isVisible():
         axes.plot(
             data.index.values,
-            data["p50"].values,
+            data["p50"].values,  # type: ignore
             alpha=style.alpha,
             linestyle=style.line_style,
             color=style.color,
@@ -147,7 +149,12 @@ def _plotPercentiles(
 
     style = plot_config.getStatisticsStyle("std")
     _plotPercentile(
-        axes, style, data.index.values, data["std+"].values, data["std-"].values, 0.5
+        axes,
+        style,
+        data.index.values,
+        data["std+"].values,  # type: ignore
+        data["std-"].values,  # type: ignore
+        0.5,
     )
 
     style = plot_config.getStatisticsStyle("min-max")
@@ -155,19 +162,29 @@ def _plotPercentiles(
         axes,
         style,
         data.index.values,
-        data["Maximum"].values,
-        data["Minimum"].values,
+        data["Maximum"].values,  # type: ignore
+        data["Minimum"].values,  # type: ignore
         0.5,
     )
 
     style = plot_config.getStatisticsStyle("p10-p90")
     _plotPercentile(
-        axes, style, data.index.values, data["p90"].values, data["p10"].values, 0.5
+        axes,
+        style,
+        data.index.values,
+        data["p90"].values,  # type: ignore
+        data["p10"].values,  # type: ignore
+        0.5,
     )
 
     style = plot_config.getStatisticsStyle("p33-p67")
     _plotPercentile(
-        axes, style, data.index.values, data["p67"].values, data["p33"].values, 0.5
+        axes,
+        style,
+        data.index.values,
+        data["p67"].values,  # type: ignore
+        data["p33"].values,  # type: ignore
+        0.5,
     )
 
 
