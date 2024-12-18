@@ -1,0 +1,54 @@
+
+GENERAL_OBSERVATION POLY_OBS_0 {
+        DATA       = POLY_RES;
+        INDEX_FILE = index_0.txt;
+        OBS_FILE   = poly_obs_0.txt;
+    };
+
+GENERAL_OBSERVATION POLY_OBS_1 {
+        DATA       = POLY_RES;
+        INDEX_FILE = index_1.txt;
+        OBS_FILE   = poly_obs_1.txt;
+    };
+
+GENERAL_OBSERVATION POLY_OBS_2 {
+        DATA       = POLY_RES;
+        INDEX_FILE = index_2.txt;
+        OBS_FILE   = poly_obs_2.txt;
+    };
+
+GENERAL_OBSERVATION POLY_OBS_3 {
+        DATA       = POLY_RES;
+        INDEX_FILE = index_3.txt;
+        OBS_FILE   = poly_obs_3.txt;
+    };
+
+GENERAL_OBSERVATION POLY_OBS_4 {
+        DATA       = POLY_RES;
+        INDEX_FILE = index_4.txt;
+        OBS_FILE   = poly_obs_4.txt;
+    };
+
+GENERAL_OBSERVATION POLY_OBS_5 {
+        DATA       = POLY_RES;
+        INDEX_FILE = index_5.txt;
+        OBS_FILE   = poly_obs_5.txt;
+    };
+
+GENERAL_OBSERVATION POLY_OBS_6 {
+        DATA       = POLY_RES;
+        INDEX_FILE = index_6.txt;
+        OBS_FILE   = poly_obs_6.txt;
+    };
+
+GENERAL_OBSERVATION POLY_OBS_7 {
+        DATA       = POLY_RES;
+        INDEX_FILE = index_7.txt;
+        OBS_FILE   = poly_obs_7.txt;
+    };
+
+GENERAL_OBSERVATION POLY_OBS_8 {
+        DATA       = POLY_RES;
+        INDEX_FILE = index_8.txt;
+        OBS_FILE   = poly_obs_8.txt;
+    };
