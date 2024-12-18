@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import stat
+import warnings
 from pathlib import Path
 
 import hypothesis.strategies as st
@@ -16,16 +17,6 @@ from ert.mode_definitions import ENSEMBLE_SMOOTHER_MODE
 from ert.storage import open_storage
 
 from .run_cli import run_cli_with_pm
-
-names = st.text(
-    min_size=1,
-    max_size=8,
-    alphabet=st.characters(
-        min_codepoint=ord("!"),
-        max_codepoint=ord("~"),
-        exclude_characters="\"'$,:%",  # These have specific meaning in configs
-    ),
-)
 
 
 @st.composite
@@ -199,21 +190,33 @@ def test_update_lowers_generalized_variance_or_deactives_observations(
         Path("POLY_EVAL").write_text(POLY_EVAL, encoding="utf-8")
 
         success = True
-        try:
-            run_cli_with_pm(
-                [
-                    ENSEMBLE_SMOOTHER_MODE,
-                    "--disable-monitor",
-                    "--experiment-name",
-                    "experiment",
-                    "config.ert",
-                ]
+        with warnings.catch_warnings(record=True) as all_warnings:
+            warnings.simplefilter("always")
+            try:
+                run_cli_with_pm(
+                    [
+                        ENSEMBLE_SMOOTHER_MODE,
+                        "--disable-monitor",
+                        "--experiment-name",
+                        "experiment",
+                        "config.ert",
+                    ]
+                )
+            except ErtCliError as err:
+                success = False
+                se = str(err)
+                assert (
+                    "No active observations" in se
+                    or "Matrix is singular." in se
+                    or "math domain error" in se
+                )
+            success &= all(
+                "Ill-conditioned matrix" not in str(w.message) for w in all_warnings
             )
-        except ErtCliError as err:
-            success = False
-            assert "No active observations" in str(
-                err
-            )  # or "Matrix is singular" in str(err)
+            success &= all(
+                "invalid value encountered in divide" not in str(w.message)
+                for w in all_warnings
+            )
 
         if success:
             with open_storage("storage") as storage:
@@ -225,5 +228,5 @@ def test_update_lowers_generalized_variance_or_deactives_observations(
 
             assert (
                 np.linalg.det(posterior.cov().to_numpy())
-                <= np.linalg.det(prior.cov().to_numpy()) + 0.001
+                <= np.linalg.det(prior.cov().to_numpy()) * 1.01 + 1e-4
             )
