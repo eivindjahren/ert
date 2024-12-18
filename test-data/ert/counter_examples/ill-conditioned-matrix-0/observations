@@ -1,0 +1,24 @@
+
+GENERAL_OBSERVATION POLY_OBS_0 {
+        DATA       = POLY_RES;
+        INDEX_FILE = index_0.txt;
+        OBS_FILE   = poly_obs_0.txt;
+    };
+
+GENERAL_OBSERVATION POLY_OBS_1 {
+        DATA       = POLY_RES;
+        INDEX_FILE = index_1.txt;
+        OBS_FILE   = poly_obs_1.txt;
+    };
+
+GENERAL_OBSERVATION POLY_OBS_2 {
+        DATA       = POLY_RES;
+        INDEX_FILE = index_2.txt;
+        OBS_FILE   = poly_obs_2.txt;
+    };
+
+GENERAL_OBSERVATION POLY_OBS_3 {
+        DATA       = POLY_RES;
+        INDEX_FILE = index_3.txt;
+        OBS_FILE   = poly_obs_3.txt;
+    };
