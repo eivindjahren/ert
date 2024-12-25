@@ -1,0 +1,6 @@
+
+GENERAL_OBSERVATION POLY_OBS_0 {
+        DATA       = POLY_RES;
+        INDEX_FILE = index_0.txt;
+        OBS_FILE   = poly_obs_0.txt;
+    };
