@@ -143,16 +143,31 @@ def test_that_workflow_run_modes_can_be_selected(run_mode):
         pytest.param("\t--Comment", "", id="Line comment with whitespace"),
         pytest.param("KEY VALUE", "KEY VALUE\n", id="Config line"),
         pytest.param("KEY VALUE --Comment", "KEY VALUE\n", id="Inline comment"),
+        pytest.param(
+            dedent("""\
+            NUM_REALIZATIONS 1 -- inline comment
+            -- Regular comment
+            ECLBASE PRED_RUN
+            SUMMARY *
+            """),
+            dedent("""\
+            NUM_REALIZATIONS 1
+            ECLBASE PRED_RUN
+            SUMMARY *
+            """),
+            id="A valid ert config",
+        ),
     ],
 )
-def test_logging_config(caplog, config_content, expected):
-    base_content = "Content of the configuration file (file_name):\n{}"
-    config_path = "file_name"
-
+def test_that_logging_of_config_strips_comments(caplog, config_content, expected):
+    config_file = "config.ert"
     with caplog.at_level(logging.INFO):
-        ErtConfig._log_config_file(config_path, config_content)
-    expected = base_content.format(expected)
-    assert expected in caplog.messages
+        ErtConfig._log_config_file(config_file, config_content)
+
+    assert (
+        f"Content of the configuration file ({config_file}):\n{expected}"
+        in caplog.messages
+    )
 
 
 @pytest.mark.usefixtures("use_tmpdir")
@@ -177,31 +192,6 @@ def test_custom_forward_models_are_logged(caplog):
         sum("Custom forward_model_step" in logmessage for logmessage in caplog.messages)
         == 1
     ), "check if site-config fm were logged"
-
-
-def test_logging_with_comments(caplog):
-    """
-    Run logging on an actual config file with line comments
-    and inline comments to check the result
-    """
-
-    config = dedent(
-        """
-        NUM_REALIZATIONS 1 -- inline comment
-        -- Regular comment
-        ECLBASE PRED_RUN
-        SUMMARY *
-        """
-    )
-    with caplog.at_level(logging.INFO):
-        ErtConfig._log_config_file("config.ert", config)
-    assert (
-        """
-NUM_REALIZATIONS 1
-ECLBASE PRED_RUN
-SUMMARY *"""
-        in caplog.text
-    )
 
 
 @pytest.mark.usefixtures("use_tmpdir")
