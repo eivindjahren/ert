@@ -95,7 +95,8 @@ def make_refcase_observations(
     Path(time_map_file).write_text("2020-01-01\n2020-01-02\n", encoding="utf-8")
 
     config_content = (
-        dedent(f"""
+        dedent(
+            f"""
         NUM_REALIZATIONS 1
         ECLBASE BASEBASEBASE
         REFCASE MY_REFCASE
@@ -103,7 +104,8 @@ def make_refcase_observations(
         GEN_DATA GEN RESULT_FILE:gen%%d.txt REPORT_STEPS:1
         TIME_MAP {time_map_file}
         OBS_CONFIG {obs_config_file}
-    """)
+    """
+        )
         + extra_config
     )
     Path("config.ert").write_text(config_content, encoding="utf-8")
@@ -152,16 +154,14 @@ def test_that_when_history_source_is_simulated_the_summary_vector_is_used():
 )
 def test_date_parsing_in_observations(datestring, errors):
     obs = [
-        (
-            {
-                "type": ObservationType.SUMMARY,
-                "name": "FOPR",
-                "KEY": "FOPR",
-                "VALUE": "1",
-                "ERROR": "1",
-                "DATE": datestring,
-            }
-        )
+        {
+            "type": ObservationType.SUMMARY,
+            "name": "FOPR",
+            "KEY": "FOPR",
+            "VALUE": "1",
+            "ERROR": "1",
+            "DATE": datestring,
+        }
     ]
     if errors:
         with pytest.raises(ValueError, match="Please use ISO date format"):
@@ -426,14 +426,16 @@ def test_that_the_date_keyword_sets_the_general_index_by_looking_up_time_map():
     # Write a legacy obs config using DATE for GENERAL_OBSERVATION and
     # run the conversion to migrate DATE -> RESTART via the TIME_MAP.
     Path("time_map.txt").write_text("\n".join(time_map), encoding="utf-8")
-    obsconf = dedent(f"""
+    obsconf = dedent(
+        f"""
     GENERAL_OBSERVATION OBS {{
         DATA = GEN;
         DATE = {time_map[restart]};
         VALUE = 1.0;
         ERROR = 1.0;
     }};
-    """)
+    """
+    )
 
     Path("obsconf").write_text(obsconf, encoding="utf-8")
 
@@ -495,14 +497,16 @@ def test_that_the_date_keyword_sets_the_report_step_by_looking_up_refcase(
         restart = data.draw(st.integers(min_value=2, max_value=len(time_map) - 1))
         # Write a legacy obs config using DATE for GENERAL_OBSERVATION and
         # run the conversion to migrate DATE -> RESTART by looking up the REFCASE.
-        obsconf = dedent(f"""
+        obsconf = dedent(
+            f"""
         GENERAL_OBSERVATION OBS {{
             DATA = GEN;
             DATE = {time_map[restart].isoformat()};
             VALUE = 1.0;
             ERROR = 1.0;
         }};
-        """)
+        """
+        )
 
         Path("obsconf").write_text(obsconf, encoding="utf-8")
 
@@ -1121,7 +1125,8 @@ def test_that_out_of_bounds_segments_are_truncated(tmpdir, start, stop, message)
             [("FOPR", "SM3/DAY", None), ("FOPRH", "SM3/DAY", None)],
         )
 
-        obsconf = dedent(f"""
+        obsconf = dedent(
+            f"""
         HISTORY_OBSERVATION FOPR {{
             ERROR = 0.20;
             ERROR_MODE = RELMIN;
@@ -1133,7 +1138,8 @@ def test_that_out_of_bounds_segments_are_truncated(tmpdir, start, stop, message)
                 ERROR_MODE = REL;
             }};
         }};
-        """)
+        """
+        )
 
         Path("obsconf").write_text(obsconf, encoding="utf-8")
 
@@ -1531,24 +1537,28 @@ def test_that_value_must_be_set_in_summary_observation():
 
 def test_that_key_must_be_set_in_summary_observation():
     with pytest.raises(ConfigValidationError, match='Missing item "KEY"'):
-        ert_config_from_parser("""
+        ert_config_from_parser(
+            """
             SUMMARY_OBSERVATION  FOPR {
                VALUE = 1;
                ERROR = 0.1;
             };
-        """)
+        """
+        )
 
 
 def test_that_data_must_be_set_in_general_observation():
     with pytest.raises(ConfigValidationError, match='Missing item "DATA"'):
-        ert_config_from_parser("""
+        ert_config_from_parser(
+            """
             GENERAL_OBSERVATION obs {
                DATE       = 2023-02-01;
                VALUE      = 1;
                ERROR      = 0.01;
                ERROR_MIN  = 0.1;
             };
-        """)
+        """
+        )
 
 
 @pytest.mark.parametrize(
@@ -1611,7 +1621,8 @@ def test_that_history_observations_can_omit_body():
 
 def test_that_error_min_must_be_a_positive_number_in_summary_observation():
     with pytest.raises(ConfigValidationError, match='Failed to validate "-1"'):
-        ert_config_from_parser("""
+        ert_config_from_parser(
+            """
             SUMMARY_OBSERVATION FOPR
             {
                 ERROR_MODE=RELMIN;
@@ -1621,12 +1632,14 @@ def test_that_error_min_must_be_a_positive_number_in_summary_observation():
                 VALUE=1.0;
                 KEY = FOPR;
             };
-        """)
+        """
+        )
 
 
 def test_that_error_mode_must_be_one_of_rel_abs_relmin_in_summary_observation():
     with pytest.raises(ConfigValidationError, match='Failed to validate "NOT_ABS"'):
-        ert_config_from_parser("""
+        ert_config_from_parser(
+            """
             SUMMARY_OBSERVATION  FOPR
             {
                 ERROR_MODE = NOT_ABS;
@@ -1635,7 +1648,8 @@ def test_that_error_mode_must_be_one_of_rel_abs_relmin_in_summary_observation():
                 VALUE=1.0;
                 KEY = FOPR;
             };
-        """)
+        """
+        )
 
 
 @pytest.mark.parametrize(
@@ -1704,25 +1718,29 @@ def test_that_date_must_be_a_date_in_general_observation():
 
 def test_that_value_must_be_a_number_in_general_observation():
     with pytest.raises(ConfigValidationError, match='Failed to validate "exactly_1"'):
-        ert_config_from_parser("""
+        ert_config_from_parser(
+            """
             GENERAL_OBSERVATION FOPR
             {
                 ERROR = 0;
                 VALUE = exactly_1;
                 DATA = GEN;
             };
-        """)
+        """
+        )
 
 
 def test_that_error_must_be_set_in_general_observation():
     with pytest.raises(ConfigValidationError, match="ERROR"):
-        ert_config_from_parser("""
+        ert_config_from_parser(
+            """
             GENERAL_OBSERVATION FOPR
             {
                 VALUE = 1;
                 DATA = GEN;
             };
-        """)
+        """
+        )
 
 
 @pytest.mark.parametrize(
@@ -1759,7 +1777,8 @@ def test_that_property_must_be_a_positive_number_in_summary_observation(
 
 def test_that_date_must_be_a_date_in_summary_observation():
     with pytest.raises(ConfigValidationError, match="Please use ISO date format"):
-        ert_config_from_parser("""
+        ert_config_from_parser(
+            """
             SUMMARY_OBSERVATION FOPR
             {
                 DATE = wednesday;
@@ -1767,29 +1786,34 @@ def test_that_date_must_be_a_date_in_summary_observation():
                 ERROR = 0.1;
                 KEY = FOPR;
             };
-        """)
+        """
+        )
 
 
 def test_that_value_must_be_a_number_in_summary_observation():
     with pytest.raises(ConfigValidationError, match='Failed to validate "exactly_1"'):
-        ert_config_from_parser("""
+        ert_config_from_parser(
+            """
             SUMMARY_OBSERVATION FOPR
             {
                 VALUE = exactly_1;
                 KEY = FOPR;
             };
-        """)
+        """
+        )
 
 
 def test_that_error_must_be_set_in_summary_observation():
     with pytest.raises(ConfigValidationError, match="ERROR"):
-        ert_config_from_parser("""
+        ert_config_from_parser(
+            """
             SUMMARY_OBSERVATION FOPR
             {
                 VALUE = 1;
                 KEY = FOPR;
             };
-        """)
+        """
+        )
 
 
 @pytest.mark.parametrize(
