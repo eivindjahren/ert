@@ -249,6 +249,7 @@ def test_rft_observation_csv_declaration():
             east=30.0,
             radius=None,
             tvd=2000.0,
+            md=2500.0,
             zone="zone1",
         ),
         RFTObservation(
@@ -262,6 +263,7 @@ def test_rft_observation_csv_declaration():
             east=31.0,
             radius=None,
             tvd=2100.0,
+            md=2600.0,
             zone="zone2",
         ),
     ]
@@ -299,6 +301,7 @@ def test_that_rft_csv_without_radius_column_gets_radius_defaulted_to_none():
             east=30.0,
             radius=None,
             tvd=2000.0,
+            md=2500.0,
             zone="zone1",
         ),
     ]
@@ -444,6 +447,7 @@ def test_that_property_can_be_specified_for_rft_observation_csv_declaration():
             north=71.0,
             east=30.0,
             tvd=2000.0,
+            md=2500.0,
             radius=None,
             zone="zone1",
         )
@@ -683,3 +687,5 @@ def test_that_rft_observation_can_be_provided_radius_localization_keyword():
     )
     for obs in obss:
         assert obs.radius == 2500
+
+        # . eelksdfjl
