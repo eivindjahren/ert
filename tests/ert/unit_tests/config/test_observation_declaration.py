@@ -687,5 +687,3 @@ def test_that_rft_observation_can_be_provided_radius_localization_keyword():
     )
     for obs in obss:
         assert obs.radius == 2500
-
-        # . eelksdfjl
