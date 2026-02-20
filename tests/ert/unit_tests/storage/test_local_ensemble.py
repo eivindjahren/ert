@@ -1,4 +1,6 @@
+from contextlib import contextmanager
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import polars as pl
@@ -250,17 +252,18 @@ def _create_rft_observation(
 
 
 def _create_rft_response_df(
-    well: str,
-    date: str,
-    prop: str,
-    value: float,
-    east: float,
-    north: float,
-    tvd: float,
-    zone: str | None,
-    i: int = 0,
-    j: int = 0,
-    k: int = 0,
+    *,
+    well: str = "WELL1",
+    date: str = "2020-01-01",
+    prop: str = "PRESSURE",
+    value: float = 148.0,
+    east: float = 100.0,
+    north: float = 200.0,
+    tvd: float = 25.0,
+    zone: str | None = None,
+    i: int = 1,
+    j: int = 2,
+    k: int = 3,
 ) -> pl.DataFrame:
     return pl.DataFrame(
         {
@@ -280,47 +283,38 @@ def _create_rft_response_df(
     )
 
 
-def test_that_get_rft_observations_and_responses_returns_joined_data(tmp_path):
-    zonemap_file = tmp_path / "zonemap.txt"
-    zonemap_file.write_text("1 Z1")
-    rft_config = RFTConfig(input_files=["DUMMY"], zonemap=zonemap_file)
-
-    observations = [
-        _create_rft_observation(zone="Z1"),
-    ]
-
-    responses_real0 = pl.concat(
-        [
-            _create_rft_response_df(
-                "WELL1",
-                "2020-01-01",
-                "PRESSURE",
-                148.0,
-                100.0,
-                200.0,
-                25.0,
-                "Z1",
-                1,
-                2,
-                3,
-            ),
-            _create_rft_response_df(
-                "WELL1", "2020-01-01", "SGAS", 0.1, 100.0, 200.0, 25.0, "Z1", 1, 2, 3
-            ),
-            _create_rft_response_df(
-                "WELL1", "2020-01-01", "SWAT", 0.2, 100.0, 200.0, 25.0, "Z1", 1, 2, 3
-            ),
-        ]
-    )
-
-    with open_storage(tmp_path, mode="w") as storage:
+@contextmanager
+def _create_rft_ensemble(ensemble_size, observations, zonemap=None):
+    rft_config = RFTConfig(input_files=["DUMMY"], zonemap=zonemap)
+    with open_storage("storage", mode="w") as storage:
         experiment = storage.create_experiment(
             experiment_config={
                 "response_configuration": [rft_config.model_dump(mode="json")],
                 "observations": [o.model_dump(mode="json") for o in observations],
             }
         )
-        ensemble = storage.create_ensemble(experiment.id, ensemble_size=1, name="test")
+        yield storage.create_ensemble(
+            experiment.id, ensemble_size=ensemble_size, name="test"
+        )
+
+
+@pytest.mark.usefixtures("use_tmpdir")
+def test_that_get_rft_observations_and_responses_returns_joined_data():
+    zonemap_file = Path("zonemap.txt")
+    zonemap_file.write_text("1 Z1", encoding="utf-8")
+    observations = [
+        _create_rft_observation(zone="Z1"),
+    ]
+
+    responses_real0 = pl.concat(
+        [
+            _create_rft_response_df(zone="Z1", prop="PRESSURE", value=148.0),
+            _create_rft_response_df(zone="Z1", prop="SGAS", value=0.1),
+            _create_rft_response_df(zone="Z1", prop="SWAT", value=0.2),
+        ]
+    )
+
+    with _create_rft_ensemble(1, observations, zonemap_file) as ensemble:
         ensemble.save_response("rft", responses_real0, 0)
 
         result = ensemble.get_rft_observations_and_responses()
@@ -350,13 +344,10 @@ def test_that_get_rft_observations_and_responses_returns_joined_data(tmp_path):
         }
 
 
-def test_that_get_rft_observations_is_active_based_on_matching_pressure_response(
-    tmp_path,
-):
+@pytest.mark.usefixtures("use_tmpdir")
+def test_that_get_rft_observations_is_active_based_on_matching_pressure_response():
     """Test that is_active is True when there is a matching PRESSURE response,
     and False if not"""
-    rft_config = RFTConfig(input_files=["DUMMY"])
-
     observations = [
         _create_rft_observation(),
         _create_rft_observation(
@@ -367,22 +358,9 @@ def test_that_get_rft_observations_is_active_based_on_matching_pressure_response
         ),
     ]
 
-    responses_real0 = pl.concat(
-        [
-            _create_rft_response_df(
-                "WELL1", "2020-01-01", "PRESSURE", 148.0, 100.0, 200.0, 25.0, None
-            ),
-        ]
-    )
+    responses_real0 = pl.concat([_create_rft_response_df()])
 
-    with open_storage(tmp_path, mode="w") as storage:
-        experiment = storage.create_experiment(
-            experiment_config={
-                "response_configuration": [rft_config.model_dump(mode="json")],
-                "observations": [o.model_dump(mode="json") for o in observations],
-            }
-        )
-        ensemble = storage.create_ensemble(experiment.id, ensemble_size=1, name="test")
+    with _create_rft_ensemble(1, observations) as ensemble:
         ensemble.save_response("rft", responses_real0, 0)
 
         result = ensemble.get_rft_observations_and_responses().sort(
@@ -393,14 +371,10 @@ def test_that_get_rft_observations_is_active_based_on_matching_pressure_response
         assert result["is_active"][1] is False  # tvd=60 has no pressure response
 
 
-def test_that_get_rft_observations_and_responses_sets_valid_zone_with_null_equality(
-    tmp_path,
-):
-    """Test that valid_zone is True when zone equals response_zone,
-    including None == None."""
-    zonemap_file = tmp_path / "zonemap.txt"
-    zonemap_file.write_text("1 Z1\n2 Z2\n")
-    rft_config = RFTConfig(input_files=["DUMMY"], zonemap=zonemap_file)
+@pytest.mark.usefixtures("use_tmpdir")
+def test_that_get_rft_observations_and_responses_sets_valid_zone_with_null_equality():
+    zonemap_file = Path("zonemap.txt")
+    zonemap_file.write_text("1 Z1\n2 Z2\n", encoding="utf-8")
 
     observations = [
         _create_rft_observation(zone="Z1"),
@@ -421,26 +395,13 @@ def test_that_get_rft_observations_and_responses_sets_valid_zone_with_null_equal
 
     responses_real0 = pl.concat(
         [
-            _create_rft_response_df(
-                "WELL1", "2020-01-01", "PRESSURE", 148.0, 100.0, 200.0, 25.0, "Z1"
-            ),
-            _create_rft_response_df(
-                "WELL1", "2020-01-01", "PRESSURE", 158.0, 100.0, 200.0, 30.0, None
-            ),
-            _create_rft_response_df(
-                "WELL1", "2020-01-01", "PRESSURE", 168.0, 100.0, 200.0, 35.0, "Z1"
-            ),
+            _create_rft_response_df(zone="Z1", tvd=25.0),
+            _create_rft_response_df(zone=None, tvd=30.0),
+            _create_rft_response_df(zone="Z1", tvd=35.0),
         ]
     )
 
-    with open_storage(tmp_path, mode="w") as storage:
-        experiment = storage.create_experiment(
-            experiment_config={
-                "response_configuration": [rft_config.model_dump(mode="json")],
-                "observations": [o.model_dump(mode="json") for o in observations],
-            }
-        )
-        ensemble = storage.create_ensemble(experiment.id, ensemble_size=1, name="test")
+    with _create_rft_ensemble(1, observations, zonemap_file) as ensemble:
         ensemble.save_response("rft", responses_real0, 0)
 
         result = ensemble.get_rft_observations_and_responses().sort(
@@ -452,12 +413,8 @@ def test_that_get_rft_observations_and_responses_sets_valid_zone_with_null_equal
         assert result["valid_zone"][2] is False  # Z2 != Z1
 
 
-def test_that_get_rft_observations_and_responses_order_is_row_index_within_well(
-    tmp_path,
-):
-    """Test that order column is 0-based row index within each well."""
-    rft_config = RFTConfig(input_files=["DUMMY"])
-
+@pytest.mark.usefixtures("use_tmpdir")
+def test_that_get_rft_observations_and_responses_order_is_row_index_within_well():
     observations = [
         _create_rft_observation(obs_name="obs1", tvd=25.0, md=50.0),
         _create_rft_observation(obs_name="obs2", tvd=30.0, md=60.0),
@@ -466,22 +423,9 @@ def test_that_get_rft_observations_and_responses_order_is_row_index_within_well(
         _create_rft_observation(well="WELL2", obs_name="obs5", tvd=45.0, md=90.0),
     ]
 
-    responses_real0 = pl.concat(
-        [
-            _create_rft_response_df(
-                "WELL1", "2020-01-01", "PRESSURE", 148.0, 100.0, 200.0, 25.0, None
-            )
-        ]
-    )
+    responses_real0 = pl.concat([_create_rft_response_df()])
 
-    with open_storage(tmp_path, mode="w") as storage:
-        experiment = storage.create_experiment(
-            experiment_config={
-                "response_configuration": [rft_config.model_dump(mode="json")],
-                "observations": [o.model_dump(mode="json") for o in observations],
-            }
-        )
-        ensemble = storage.create_ensemble(experiment.id, ensemble_size=1, name="test")
+    with _create_rft_ensemble(1, observations) as ensemble:
         ensemble.save_response("rft", responses_real0, 0)
 
         result = ensemble.get_rft_observations_and_responses().sort(
@@ -492,29 +436,14 @@ def test_that_get_rft_observations_and_responses_order_is_row_index_within_well(
         assert result["order"].to_list() == [0, 1, 2, 0, 1]
 
 
-def test_that_get_rft_observations_and_responses_handles_multiple_realizations(
-    tmp_path,
-):
-    """Test that responses from multiple realizations are concatenated correctly."""
-    rft_config = RFTConfig(input_files=["DUMMY"])
-
+@pytest.mark.usefixtures("use_tmpdir")
+def test_that_get_rft_observations_and_responses_handles_multiple_realizations():
     observations = [_create_rft_observation()]
 
-    responses_real0 = _create_rft_response_df(
-        "WELL1", "2020-01-01", "PRESSURE", 148.0, 100.0, 200.0, 25.0, None
-    )
-    responses_real1 = _create_rft_response_df(
-        "WELL1", "2020-01-01", "PRESSURE", 152.0, 100.0, 200.0, 25.0, None
-    )
+    responses_real0 = _create_rft_response_df(value=148.0)
+    responses_real1 = _create_rft_response_df(value=152.0)
 
-    with open_storage(tmp_path, mode="w") as storage:
-        experiment = storage.create_experiment(
-            experiment_config={
-                "response_configuration": [rft_config.model_dump(mode="json")],
-                "observations": [o.model_dump(mode="json") for o in observations],
-            }
-        )
-        ensemble = storage.create_ensemble(experiment.id, ensemble_size=2, name="test")
+    with _create_rft_ensemble(2, observations) as ensemble:
         ensemble.save_response("rft", responses_real0, 0)
         ensemble.save_response("rft", responses_real1, 1)
 
@@ -526,65 +455,29 @@ def test_that_get_rft_observations_and_responses_handles_multiple_realizations(
         assert result["pressure"][1] == pytest.approx(152.0)
 
 
-def test_that_get_rft_observations_and_responses_raises_error_for_no_observations(
-    tmp_path,
-):
-    """Test that StorageError is raised when no RFT observations exist."""
-    rft_config = RFTConfig(input_files=["DUMMY"])
-
-    with open_storage(tmp_path, mode="w") as storage:
-        experiment = storage.create_experiment(
-            experiment_config={
-                "response_configuration": [rft_config.model_dump(mode="json")],
-                "observations": {},
-            }
-        )
-        ensemble = storage.create_ensemble(experiment.id, ensemble_size=1, name="test")
-
-        with pytest.raises(StorageError, match="No RFT observations found"):
-            ensemble.get_rft_observations_and_responses()
+@pytest.mark.usefixtures("use_tmpdir")
+def test_that_get_rft_observations_and_responses_raises_error_for_no_observations():
+    with (
+        _create_rft_ensemble(1, []) as ensemble,
+        pytest.raises(StorageError, match="No RFT observations found"),
+    ):
+        ensemble.get_rft_observations_and_responses()
 
 
-def test_that_get_rft_observations_and_responses_raises_error_when_response_not_saved(
-    tmp_path,
-):
-    rft_config = RFTConfig(input_files=["DUMMY"])
-
-    observations = [_create_rft_observation()]
-
-    with open_storage(tmp_path, mode="w") as storage:
-        experiment = storage.create_experiment(
-            experiment_config={
-                "response_configuration": [rft_config.model_dump(mode="json")],
-                "observations": [o.model_dump(mode="json") for o in observations],
-            }
-        )
-        ensemble = storage.create_ensemble(experiment.id, ensemble_size=1, name="test")
-
-        with pytest.raises(KeyError, match="No response for key rft"):
-            ensemble.get_rft_observations_and_responses()
+@pytest.mark.usefixtures("use_tmpdir")
+def test_that_get_rft_observations_and_responses_raises_error_when_response_not_saved():
+    with (
+        _create_rft_ensemble(1, [_create_rft_observation()]) as ensemble,
+        pytest.raises(KeyError, match="No response for key rft"),
+    ):
+        ensemble.get_rft_observations_and_responses()
 
 
-def test_that_get_rft_observations_and_responses_adds_missing_saturation_columns(
-    tmp_path,
-):
-    rft_config = RFTConfig(input_files=["DUMMY"])
-
-    observations = [_create_rft_observation()]
-
-    responses_real0 = _create_rft_response_df(
-        "WELL1", "2020-01-01", "PRESSURE", 148.0, 100.0, 200.0, 25.0, None
-    )
-
-    with open_storage(tmp_path, mode="w") as storage:
-        experiment = storage.create_experiment(
-            experiment_config={
-                "response_configuration": [rft_config.model_dump(mode="json")],
-                "observations": [o.model_dump(mode="json") for o in observations],
-            }
-        )
-        ensemble = storage.create_ensemble(experiment.id, ensemble_size=1, name="test")
-        ensemble.save_response("rft", responses_real0, 0)
+@pytest.mark.usefixtures("use_tmpdir")
+def test_that_get_rft_observations_and_responses_adds_missing_saturation_columns():
+    with _create_rft_ensemble(1, [_create_rft_observation()]) as ensemble:
+        # Save a response that does not contain saturations
+        ensemble.save_response("rft", _create_rft_response_df(), 0)
 
         result = ensemble.get_rft_observations_and_responses()
 
@@ -599,7 +492,6 @@ def test_that_get_rft_observations_and_responses_adds_missing_saturation_columns
 def test_that_get_rft_observations_and_responses_maps_report_step_from_summary_times(
     tmp_path,
 ):
-    """Test that report_step is mapped from summary response times."""
     rft_config = RFTConfig(input_files=["DUMMY"])
     summary_config = SummaryConfig(keys=["FOPR"], input_files=["DUMMY"])
 
@@ -615,25 +507,14 @@ def test_that_get_rft_observations_and_responses_maps_report_step_from_summary_t
     ]
 
     rft_responses = pl.concat(
-        [
-            _create_rft_response_df(
-                "WELL1", "2020-01-15", "PRESSURE", 148.0, 100.0, 200.0, 25.0, None
-            ),
-            _create_rft_response_df(
-                "WELL1", "2020-02-15", "PRESSURE", 158.0, 100.0, 200.0, 30.0, None
-            ),
-        ]
+        [_create_rft_response_df(value=148.0), _create_rft_response_df(value=158.0)]
     )
 
     summary_responses = pl.DataFrame(
         {
             "response_key": ["FOPR"] * 3,
             "time": pl.Series(
-                [
-                    datetime(2020, 1, 1),
-                    datetime(2020, 1, 15),
-                    datetime(2020, 2, 15),
-                ]
+                [datetime(2020, 1, 1), datetime(2020, 1, 15), datetime(2020, 2, 15)]
             ).dt.cast_time_unit("ms"),
             "values": pl.Series([100.0, 200.0, 300.0], dtype=pl.Float32),
         }
