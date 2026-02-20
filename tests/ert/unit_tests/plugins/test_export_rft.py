@@ -1,6 +1,9 @@
+from contextlib import contextmanager
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import polars as pl
+import pytest
 
 from ert.config import RFTConfig
 from ert.config._observations import RFTObservation
@@ -11,33 +14,35 @@ from ert.plugins.hook_implementations.workflows.export_rft import (
 from ert.storage import open_storage
 
 
-def _create_rft_observation(
-    well: str = "WELL1",
-    date: str = "2020-01-01",
-    prop: str = "PRESSURE",
-    obs_name: str = "obs1",
-    east: float = 100.0,
-    north: float = 200.0,
-    tvd: float = 25.0,
-    md: float | None = 50.0,
-    zone: str | None = None,
-    value: float = 150.0,
-    error: float = 5.0,
-) -> RFTObservation:
-    return RFTObservation(
-        name=obs_name,
-        well=well,
-        date=date,
-        property=prop,
-        value=value,
-        error=error,
-        north=north,
-        east=east,
-        radius=None,
-        tvd=tvd,
-        md=md,
-        zone=zone,
-    )
+@contextmanager
+def _create_rft_ensemble(ensemble_size):
+    rft_config = RFTConfig(input_files=["DUMMY"])
+    observations = [
+        RFTObservation(
+            name="obs1",
+            well="WELL1",
+            date="2020-01-01",
+            property="PRESSURE",
+            value=150.0,
+            error=5.0,
+            north=200.0,
+            east=100.0,
+            radius=None,
+            tvd=25.0,
+            md=50.0,
+            zone=None,
+        )
+    ]
+    with open_storage("storage", mode="w") as storage:
+        experiment = storage.create_experiment(
+            experiment_config={
+                "response_configuration": [rft_config.model_dump(mode="json")],
+                "observations": [o.model_dump(mode="json") for o in observations],
+            }
+        )
+        yield storage.create_ensemble(
+            experiment.id, ensemble_size=ensemble_size, name="test"
+        )
 
 
 def _create_rft_response_df(
@@ -73,80 +78,56 @@ def test_that_export_rft_job_is_registered_in_plugin_manager():
     assert "EXPORT_RFT" in pm.get_ertscript_workflows().get_workflows()
 
 
-def test_that_export_rft_writes_csv_files_to_runpaths(tmp_path):
-    rft_config = RFTConfig(input_files=["DUMMY"])
+def _mock_runpath(runpaths):
+    run_paths = MagicMock()
+    run_paths.get_paths.return_value = runpaths
+    return run_paths
 
-    observations = [_create_rft_observation()]
 
-    responses_real0 = _create_rft_response_df()
-    responses_real1 = _create_rft_response_df(value=152.0)
+@pytest.mark.usefixtures("use_tmpdir")
+def test_that_export_rft_writes_csv_files_to_runpaths():
 
-    runpath0 = tmp_path / "real0"
-    runpath1 = tmp_path / "real1"
-    runpath0.mkdir()
-    runpath1.mkdir()
+    runpath_values = [
+        (Path("real0"), _create_rft_response_df()),
+        (Path("real1"), _create_rft_response_df(value=152.0)),
+    ]
 
-    with open_storage(tmp_path / "storage", mode="w") as storage:
-        experiment = storage.create_experiment(
-            experiment_config={
-                "response_configuration": [rft_config.model_dump(mode="json")],
-                "observations": [o.model_dump(mode="json") for o in observations],
-            }
+    for rp, _ in runpath_values:
+        rp.mkdir()
+
+    with _create_rft_ensemble(ensemble_size=2) as ensemble:
+        for i, (_, response) in enumerate(runpath_values):
+            ensemble.save_response("rft", response, i)
+
+        ExportRFTJob().run(
+            _mock_runpath([str(rp) for rp, _ in runpath_values]), ensemble, []
         )
-        ensemble = storage.create_ensemble(experiment.id, ensemble_size=2, name="test")
-        ensemble.save_response("rft", responses_real0, 0)
-        ensemble.save_response("rft", responses_real1, 1)
 
-        run_paths = MagicMock()
-        run_paths.get_paths.return_value = [str(runpath0), str(runpath1)]
+        for runpath, response in runpath_values:
+            output_file = runpath / "share/results/tables/rft_ert.csv"
 
-        job = ExportRFTJob()
-        job.run(run_paths, ensemble, [])
+            assert output_file.exists()
 
-        output_file0 = runpath0 / "share/results/tables/rft_ert.csv"
-        output_file1 = runpath1 / "share/results/tables/rft_ert.csv"
+            output = pl.read_csv(output_file)
 
-        assert output_file0.exists()
-        assert output_file1.exists()
+            assert "realization" not in output.columns
 
-        df0 = pl.read_csv(output_file0)
-        df1 = pl.read_csv(output_file1)
-
-        assert "realization" not in df0.columns
-        assert "realization" not in df1.columns
-
-        assert df0["pressure"][0] == responses_real0["values"][0]
-        assert df1["pressure"][0] == responses_real1["values"][0]
+            assert output["pressure"][0] == response["values"][0]
 
 
-def test_that_export_rft_uses_custom_filename(tmp_path):
-    rft_config = RFTConfig(input_files=["DUMMY"])
-
-    observations = [_create_rft_observation()]
-
+@pytest.mark.usefixtures("use_tmpdir")
+def test_that_export_rft_uses_custom_filename():
     responses_real0 = _create_rft_response_df()
 
-    runpath0 = tmp_path / "real0"
+    runpath0 = Path("real0")
     runpath0.mkdir()
 
-    with open_storage(tmp_path / "storage", mode="w") as storage:
-        experiment = storage.create_experiment(
-            experiment_config={
-                "response_configuration": [rft_config.model_dump(mode="json")],
-                "observations": [o.model_dump(mode="json") for o in observations],
-            }
-        )
-        ensemble = storage.create_ensemble(experiment.id, ensemble_size=1, name="test")
+    with _create_rft_ensemble(ensemble_size=1) as ensemble:
         ensemble.save_response("rft", responses_real0, 0)
 
-        run_paths = MagicMock()
-        run_paths.get_paths.return_value = [str(runpath0)]
-
-        job = ExportRFTJob()
-        job.run(run_paths, ensemble, ["custom_rft.csv"])
+        ExportRFTJob().run(_mock_runpath([str(runpath0)]), ensemble, ["custom_rft.csv"])
 
         output_file = runpath0 / "custom_rft.csv"
         assert output_file.exists()
 
-        df = pl.read_csv(output_file)
-        assert df["pressure"][0] == responses_real0["values"][0]
+        assert pl.read_csv(output_file)["pressure"][0] == responses_real0["values"][0]
